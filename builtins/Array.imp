@@ -1,0 +1,23 @@
+class Array {
+  func Array() {
+    this.length = 0;
+  }
+
+  func push(x) {
+    this[this.length] = x;
+    this.length += 1;
+
+    return this.length;
+  }
+
+  func pop() {
+    set g = this[this.length - 1];
+    this[this.length - 1] = 0;
+
+    this.length -= 1;
+
+    return g;
+  }
+}
+
+return Array;

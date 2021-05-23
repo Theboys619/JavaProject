@@ -1,0 +1,35 @@
+set x = "test";
+
+print(x, x, x, x, x);
+x = "tests";
+
+print("Stinky Pete");
+
+func fact(z) {
+  print(z);
+
+  return "Testing";
+}
+
+fact("Hi");
+
+set cool = fact;
+
+cool("NICE");
+
+class TestClass {
+  func TestClass(r) {
+    this[r] = r;
+  }
+}
+
+set testObj = TestClass("J");
+print(testObj["J"]);
+
+set z = Array();
+
+
+z.push("Hi");
+set c = z.pop();
+print(c);
+print(z.length)

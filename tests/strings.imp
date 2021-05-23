@@ -1,0 +1,7 @@
+set x = "this is cool";
+set z = " Nice";
+
+set c = x.concat(z);
+
+set y = if false: "Cool" else: "Nope";
+print(c)

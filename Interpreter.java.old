@@ -1,0 +1,340 @@
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.Map.Entry;
+import java.util.concurrent.Callable;
+
+class Value {
+  ExprTypes type;
+  Any value;
+
+  Context ctx;
+
+  String valName = "";
+
+  boolean returned = false;
+  boolean property = false;
+
+  public Value() {
+    type = ExprTypes.None;
+    value = new Any();
+    ctx = new Context();
+  }
+  public Value(int val) {
+    type = ExprTypes.Integer;
+    value = new Any(val);
+    ctx = new Context();
+  }
+  public Value(String val) {
+    type = ExprTypes.String;
+    value = new Any(val);
+    ctx = new Context();
+  }
+  public Value(double val) {
+    type = ExprTypes.Double;
+    value = new Any(val);
+    ctx = new Context();
+  }
+
+  int getInt() {
+    return value.getInt();
+  }
+
+  double getDouble() {
+    return value.getDouble();
+  }
+
+  String getString() {
+    if (value.type.equals("Int")) return "" + value.getInt();
+    if (value.type.equals("Double")) return "" + value.getDouble();
+    return value.getString();
+  }
+
+  public Value add(Value val) {
+    if (val.type == ExprTypes.Integer) {
+      int newVal = getInt() + val.getInt();
+      return new Value(newVal);
+    } else if (val.type == ExprTypes.Double) {
+      double newVal = getDouble() + val.getDouble();
+      return new Value(newVal);
+    } else if (val.type == ExprTypes.String) {
+      String newVal = getString() + val.getString();
+      return new Value(newVal);
+    } else {
+      throw new java.lang.Error("Cannot add on type " + val.type);
+    }
+  }
+};
+
+interface NativeFunction {
+  public Value call(ArrayList<Value> args, Context ctx, Context thisCtx);
+}
+
+class Function extends Value {
+  String funcName;
+  Context ctx;
+  Interpreter interp;
+
+  AST mainExp;
+  ArrayList<AST> argDefs;
+
+  NativeFunction nativeFunc;
+  boolean isNative = false;
+
+  public Function(String name, Interpreter inter) {
+    funcName = name;
+    interp = inter;
+    mainExp = new AST();
+    ctx = new Context();
+    argDefs = new ArrayList<AST>();
+  }
+  public Function(String name, AST exp, Interpreter inter) {
+    funcName = name;
+    interp = inter;
+    mainExp = exp;
+    ctx = new Context();
+    argDefs = new ArrayList<AST>();
+    argDefs = exp.args;
+  }
+  public Function(String name, NativeFunction func, Interpreter inter) {
+    funcName = name;
+    interp = inter;
+    nativeFunc = func;
+    ctx = new Context();
+    isNative = true;
+  }
+
+  public Value Call(ArrayList<Value> args, Context c) {
+    Context newCtx = c.Join(ctx);
+    if (isNative) return nativeFunc.call(args, newCtx, ctx);
+
+    for (int i = 0; i < argDefs.size(); i++) {
+      newCtx.Define(argDefs.get(i).value.getString(), new Value());
+
+      if (argDefs.get(i).type == ExprTypes.Assign) {
+        AST expr = argDefs.get(i);
+        Value right = interp.Evaluate(expr.right, newCtx);
+
+        newCtx.Define(expr.left.value.getString(), right);
+
+        if (args.get(i).type == ExprTypes.None)
+          continue;
+      }
+
+      if (i >= args.size())
+        continue;
+      
+      if (argDefs.get(i).type == ExprTypes.Assign)
+        newCtx.Define(argDefs.get(i).left.value.getString(), args.get(i));
+      else
+        newCtx.Define(argDefs.get(i).value.getString(), args.get(i));
+    }
+
+    Value returnValue = interp.Evaluate(mainExp, newCtx);
+
+    return returnValue;
+  }
+}
+
+class Context {
+  Map<String, Value> props;
+  Context parent;
+
+  public Context() {
+    props = new HashMap<String, Value>();
+  }
+
+  public Context(Context x) {
+    props = x.props;
+    parent = x;
+  }
+
+  public Context Extend() {
+    return new Context(this);
+  }
+
+  public Context Join(Context o) {
+    Context newCtx = new Context(this);
+
+    for (Entry<String, Value> entry : o.props.entrySet()) {
+      newCtx.Set(entry.getKey(), entry.getValue());
+    }
+
+    return newCtx;
+  }
+
+  public boolean hasProp(String name) {
+    return props.containsKey(name);
+  }
+
+  public void Define(String name, Value val) {
+    if (hasProp(name)) throw new java.lang.Error(name + " is already defined.");
+    props.put(name, val);
+  }
+
+  public Value Set(String name, Value val) {
+    if (hasProp(name)) props.remove(name);
+    return props.put(name, val);
+  }
+
+  public Value Get(String name) {
+    if (!hasProp(name)) throw new java.lang.Error(name + " is not defined.");
+    return props.get(name);
+  }
+}
+
+class Interpreter {
+  AST ast;
+  Context mainContext;
+  
+  public Interpreter(AST a) {
+    ast = a;
+    mainContext = new Context();
+  }
+  public Interpreter(AST a, Context ctx) {
+    ast = a;
+    mainContext = ctx;
+  }
+
+  public Value iScope(AST exp, Context ctx, boolean extend) {
+    ArrayList<AST> block = exp.block;
+
+    Value returnValue = new Value();
+    Context newCtx = extend ? ctx.Extend() : ctx;
+
+    for (AST expr : block) {
+      returnValue = Evaluate(expr, newCtx); // Evaluate each statement or expression
+
+      if (!ctx.equals(mainContext) && returnValue.type != ExprTypes.None && returnValue.returned) {
+        returnValue.returned = false;
+        return returnValue; // Check if it is a returnValue or has been returned and return (only for functions)
+      }
+    }
+
+    if (returnValue.type == ExprTypes.None)
+      return new Value();
+
+    return returnValue;
+  }
+
+  public Value iVariable(AST exp, Context ctx) {
+    String identifier = exp.value.getString();
+    ctx.Define(identifier, new Value());
+
+    return new Value();
+  }
+
+  public Value iAssign(AST exp, Context ctx) {
+    Value identifier = Evaluate(exp.left, ctx);
+    Value val = Evaluate(exp.right, ctx);
+
+    String name = exp.left.value.getString();
+
+    if (identifier.property) {
+      ArrayList<AST> access = exp.left.Access;
+      exp.left.Access = new ArrayList<AST>();
+
+      Value firstVar = Evaluate(exp.left, ctx);
+      Value lastVar = firstVar;
+
+      Context lastCtx = firstVar.ctx;
+
+      for (int i = 0; i < access.size(); i++) {
+        AST expr = access.get(i);
+
+        Value propVal = i >= access.size() - 1 ? val : Evaluate(expr, lastCtx);
+        System.out.println(propVal.getString());
+        lastVar.ctx.Set(expr.value.getString(), propVal);
+
+        lastCtx = propVal.ctx;
+        lastVar = propVal;
+      }
+
+      exp.left.Access = access;
+      return ctx.Set(name, firstVar);
+    }
+
+    return ctx.Set(name, val);
+  }
+
+  public Value iFuncCall(AST exp, Context ctx) {
+    Function func = (Function)ctx.Get(exp.value.getString());
+    ArrayList<Value> args = new ArrayList<Value>();
+
+    for (AST expr : exp.args) {
+      Value arg = Evaluate(expr, ctx);
+      args.add(arg);
+    }
+
+    return func.Call(args, ctx);
+  }
+
+  public Value iAccess(AST exp, Context ctx) {
+    ArrayList<AST> access = exp.Access;
+    int accessSize = access.size();
+
+    Value firstVal = new Value();
+    Value lastVal = new Value();
+
+    for (int i = 0; i < accessSize; i += 2) {
+      AST expr = access.get(i);
+      int next = i + 1;
+
+      if (lastVal.type != ExprTypes.None) {
+        firstVal = Evaluate(expr, lastVal.ctx);
+        firstVal.valName = expr.value.getString();
+      } else {
+        firstVal = Evaluate(expr, ctx);
+        firstVal.valName = expr.value.getString();
+      }
+
+      if (next >= accessSize) {
+        firstVal.property = true;
+        return firstVal;
+      }
+
+      lastVal = Evaluate(access.get(next), firstVal.ctx);
+      lastVal.valName = access.get(next).value.getString();
+    }
+
+    lastVal.property = true;
+
+    return lastVal;
+  }
+
+  public Value iIdentifier(AST exp, Context ctx) {
+    int accessSize = exp.Access.size();
+    String name = exp.value.getString();
+    Value mainVar;
+
+    if (!mainContext.equals(ctx))
+      mainVar = ctx.hasProp(name) ? ctx.Get(name) : new Value();
+    else
+      mainVar = ctx.Get(name);
+
+    if (accessSize > 0) {
+      return iAccess(exp, mainVar.ctx);
+    }
+
+    return mainVar;
+  }
+
+  public Value Evaluate(AST exp, Context ctx) {
+    switch (exp.type) {
+      case Scope: return iScope(exp, ctx, true);
+      
+      case Assign: return iAssign(exp, ctx);
+      case Variable: return iVariable(exp, ctx);
+      case Identifier: return iIdentifier(exp, ctx);
+
+      case FunctionCall: return iFuncCall(exp, ctx);
+
+      default: return new Value();
+    }
+  }
+
+  public Value interpret() {
+    return Evaluate(ast, mainContext);
+  }
+}
