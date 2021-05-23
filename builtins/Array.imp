@@ -11,12 +11,12 @@ class Array {
   }
 
   func pop() {
-    set g = this[this.length - 1];
+    set x = this[this.length - 1];
     this[this.length - 1] = 0;
 
     this.length -= 1;
 
-    return g;
+    return x;
   }
 }
 

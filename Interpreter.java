@@ -5,6 +5,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.Map.Entry;
 
+// Yes it would be nicer to split stuff into other files but too bad
+
+// wrapper around HashMap / Map
 class PropMap {
   Map<String, ImpObject> props;
 
@@ -368,7 +371,7 @@ class ImpScope {
   public ImpScope(Interpreter i, ImpScope p) {
     interp = i;
     parent = p;
-    props = new PropMap(p.props);
+    props = new PropMap();
   }
 
   public boolean HasProp(String name) {
@@ -847,3 +850,6 @@ public class Interpreter {
     return iScope(mainAst, false);
   }
 }
+
+// This took me together almost 10 hours to code. Started the interpreter Saturday 5/22 at 4pm. Stopped at 3:20 am.
+// Obviously I didn't sit all day and code but most of it was.

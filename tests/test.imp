@@ -3,7 +3,7 @@ set x = "test";
 print(x, x, x, x, x);
 x = "tests";
 
-print("Stinky Pete");
+print("Long string so yes this might work");
 
 func fact(z) {
   print(z);
@@ -27,7 +27,6 @@ set testObj = TestClass("J");
 print(testObj["J"]);
 
 set z = Array();
-
 
 z.push("Hi");
 set c = z.pop();

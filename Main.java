@@ -10,6 +10,8 @@ import java.util.concurrent.Callable;
 class Main {
   public static void main(String[] args) {
     // System.out.println("Hello world!");
+    // Test file located in tests/test.imp
+    // This is the file that will be ran by the interpreter
     Lexer lexer = new Lexer(MFileReader.readFile("tests/test.imp"));
     ArrayList<Token> tokens = lexer.tokenize();
 
