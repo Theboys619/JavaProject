@@ -1,3 +1,14 @@
+import "./tests/exports.imp" as yo;
+# This is an import
+
+LolOk("This is a testFunc Call before definition");
+
+func LolOk(h) {
+  print("OK:", h);
+}
+
+set u = yo(); # Should print "This Exported Class Works"
+
 set x = "test";
 
 print(x, x, x, x, x);
@@ -26,9 +37,25 @@ class TestClass {
 set testObj = TestClass("J");
 print(testObj["J"]);
 
-set z = Array();
+set z = ["Nice"];
 
 z.push("Hi");
+print("F");
 set c = z.pop();
 print(c);
 print(z.length)
+print("Popped Value:", c);
+
+set inputVal = input("Enter Name: "); # Yo insane
+print("Hi", inputVal); # Prints each arg and a space between them
+print(5.5);
+
+set hq = 8 / 2 * (2 + 2); # should be 16
+
+print(hq);
+
+print(factorial(5)); # Should print 120
+
+func factorial(x) {
+  return if x == 1: 1 else x * factorial(x - 1);
+}

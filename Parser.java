@@ -141,7 +141,7 @@ class Parser {
   }
 
   AST checkCall(AST expr) {
-    if (isType("Delimiter", "(", peek()) && isCallable(expr)) {
+    if (isType("Delimiter", "(", peek()) && isCallable(expr) && isType("Identifier")) {
       return pCall(expr);
     }
 
@@ -160,7 +160,6 @@ class Parser {
 
   AST pBinary(AST left, int prec) {
     Token op = curTok;
-
 
     if (isType("Operator")) {
       String opval = op.getString();
@@ -421,6 +420,28 @@ class Parser {
     return loop;
   }
 
+  AST pArray() {
+    AST arrayStmt = new AST(ExprTypes.Array, curTok);
+    arrayStmt.args = pDelimiters("[", "]", ",");
+
+    return arrayStmt;
+  }
+
+  AST pImport() {
+    // import "Test" as express;
+
+    advance(); // skip over import Keyword
+
+    Token importStr = curTok;
+    advance();
+
+    AST importAst = new AST(ExprTypes.Import, importStr);
+    skipOverVal("as", curTok);
+    importAst.assign = pIdentifier(new AST(ExprTypes.Identifier, curTok));
+
+    return importAst;
+  }
+
   AST $pAll() {
     if (isType("Delimiter", "(")) {
       skipOver("Delimiter", "(", curTok); 
@@ -429,6 +450,9 @@ class Parser {
 
       return expr;
     }
+
+    if (isType("Delimiter", "["))
+      return pArray();
 
     AST oldTok = new AST(curTok);
 
@@ -452,6 +476,9 @@ class Parser {
     if (isType("Keyword", "for"))
       return pFor();
 
+    if (isType("Keyword", "import"))
+      return pImport();
+
     if (isType("Keyword", "true") || isType("Keyword", "false")) {
       oldTok.setType(ExprTypes.Boolean);
       advance();
@@ -469,7 +496,7 @@ class Parser {
       advance();
 
       return oldTok;
-    } else if (isType("Double", curTok)) {
+    } else if (isType("Float", curTok)) {
       oldTok.setType(ExprTypes.Double);
 
       advance();

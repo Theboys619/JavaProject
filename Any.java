@@ -33,9 +33,11 @@ public class Any {
 
   // Methods to get property of the class
   public String getString() {
-    if (type.equals("Int") || type.equals("Double"))
+    if (type.equals("Int"))
       return String.valueOf(integer);
-
+    if (type.equals("Double"))
+      return String.valueOf(decimal);
+      
     if (type.equals("Boolean"))
       return bool ? "true" : "false";
 

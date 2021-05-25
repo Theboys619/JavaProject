@@ -1,0 +1,9 @@
+class Ok {
+  func Ok() {
+    print("This Exported Class Works");
+  }
+}
+
+print("This should be executed");
+
+return Ok;

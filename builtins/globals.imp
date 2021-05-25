@@ -1,0 +1,37 @@
+class String {
+  func String() {
+    this.length = 0;
+  }
+
+  func concat(newStr) {
+    for (set i; i < newStr.length; i += 1) {
+      this[i + this.length] = newStr[i];
+    }
+
+    this.length += newStr.length;
+
+    return this;
+  }
+}
+
+class Array {
+  set length = 0;
+  
+  func Array() {}
+
+  func push(x) {
+    this[this.length] = x;
+    this.length += 1;
+
+    return this.length;
+  }
+
+  func pop() {
+    set x = this[this.length - 1];
+    this[this.length - 1] = 0;
+
+    this.length -= 1;
+
+    return x;
+  }
+}

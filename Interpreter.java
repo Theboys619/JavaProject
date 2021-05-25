@@ -5,6 +5,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.Map.Entry;
 
+import java.util.Scanner;
+
 // Yes it would be nicer to split stuff into other files but too bad
 
 // wrapper around HashMap / Map
@@ -66,6 +68,7 @@ enum ImpTypes {
   ClassString
 };
 
+// Every value in Imp is an ImpObject or is a child of it
 class ImpObject {
   ImpTypes type;
   PropMap props = new PropMap();
@@ -89,6 +92,11 @@ class ImpObject {
 
   public ImpObject(int val) {
     type = ImpTypes.Int;
+    value = new Any(val);
+  }
+
+  public ImpObject(double val) {
+    type = ImpTypes.Double;
     value = new Any(val);
   }
 
@@ -167,6 +175,7 @@ class ImpObject {
   }
 }
 
+// Yes I did indeed need to look up how this worked for implementation of native methods / functions
 interface NativeFunction {
   public ImpObject call(ArrayList<ImpObject> args, Interpreter interp);
 }
@@ -430,9 +439,15 @@ public class Interpreter {
       scope = new ImpScope(this, scope);
 
     for (AST expr : exp.block) {
+      if (expr.type != ExprTypes.Function) continue;
+      returnValue = Evaluate(expr);
+    }
+
+    for (AST expr : exp.block) {
+      if (expr.type == ExprTypes.Function) continue;
       returnValue = Evaluate(expr); // Evaluate each statement or expression
 
-      if (extend && scope.returned) {
+      if (scope.returned) {
         return returnValue; // Check if it is a returnValue or has been returned and return (only for functions)
       }
     }
@@ -481,12 +496,8 @@ public class Interpreter {
     ImpObject val = Evaluate(exp.right);
     String op = exp.op.getString();
 
-    if (op.equals("+=")) {
-      if (identifier.type == ImpTypes.Int && val.type == ImpTypes.Int)
-        val = new ImpObject(identifier.getInt() + val.getInt());
-    } else if (op.equals("-=")) {
-      if (identifier.type == ImpTypes.Int && val.type == ImpTypes.Int)
-        val = new ImpObject(identifier.getInt() - val.getInt());
+    if (op.equals("+=") || op.equals("-=")) {
+      val = iOperation(identifier, val, op);
     }
 
     scope.Set(exp.left.value.getString(), val);
@@ -523,6 +534,10 @@ public class Interpreter {
     return new ImpObject(Integer.parseInt(exp.value.getString()));
   }
 
+  ImpObject iDouble(AST exp) {
+    return new ImpObject(Double.parseDouble(exp.value.getString()));
+  }
+
   ImpObject iBoolean(AST exp) {
     return new ImpObject(exp.value.getString().equals("true"));
   }
@@ -546,6 +561,7 @@ public class Interpreter {
 
   ImpObject iClass(AST exp) {
     ImpObject cls = new ImpClass(this, exp);
+    // Polymorphism actually hurts the brain it is proven.
 
     scope.Define(exp.value.getString(), cls);
 
@@ -563,42 +579,59 @@ public class Interpreter {
     ArrayList<String> propNames = new ArrayList<String>();
 
     ImpObject lastEvaluated = Evaluate(mainIdentifier);
+    // Evauluates the first property
 
     propPath.add(lastEvaluated);
     propNames.add(exp.value.getString());
+    // Add that evaluated value into the propPath list
+    // and add the prop's name into a list too
 
     ArrayList<AST> props = exp.Access;
+    // Get the props
 
     for (int i = 0; i < props.size(); i++) {
       AST propExp = props.get(i);
       String propName = (propExp.type == ExprTypes.Assign || propExp.type == ExprTypes.Binary)
         ? propExp.left.value.getString()
         : propExp.value.getString();
+      // get the AST Expression and name of the property
 
       lastEvaluated = lastEvaluated.props.Get(propName, false);
+      // Evauluates for regular identifier prop accessing      
+      
       propPath.add(i + 1, lastEvaluated);
       propNames.add(i + 1, propName);
+      // Adds the evaluated value and name into a list from i + 1 since the first one is already added into index 0.
+      
 
       if (propExp.type == ExprTypes.Binary) {
+        // Get the property from the last prop and evauluate the right expression
         ImpObject a = propPath.get(i).props.Get(propName);
         ImpObject b = Evaluate(propExp.right);
         lastEvaluated = iOperation(a, b, propExp.op.getString());
 
         propPath.set(i + 1, lastEvaluated);
+        // Set the evaluated response into the propPath at its number of access (i + 1)
       }
 
       if (propExp.type == ExprTypes.FunctionCall) {
         if (lastEvaluated.isNull()) throw new Error("Cannot call a undefined function / property");
 
         ImpFunction func = (ImpFunction)lastEvaluated;
+        func.interp = this;
         lastEvaluated = func.ExpCall(propExp.args, propPath.get(i));
+
         propPath.set(i + 1, lastEvaluated);
+        // Call prop function and set lastEvaluated. Set the index in propPath to the lastEvaluated.
       } else if (propExp.type == ExprTypes.Assign) {
         if (propPath.get(i).isNull()) throw new Error("Cannot assign a property on an undefined property.");
 
         if (propExp.isBracketOp) {
           propName = Evaluate(propExp.left).getString();
+          // Evaluate the left expression and get the String name of the property.
+
           propNames.set(i + 1, propName);
+          // Set the name into propNames list
         }
 
         ImpObject val = Evaluate(propExp.right);
@@ -608,16 +641,9 @@ public class Interpreter {
 
         String op = propExp.op.getString();
 
-        if (op.equals("+=")) {
+        if (op.equals("+=") || op.equals("-=")) {
           ImpObject identifier = lastProp.props.Get(propName);
-
-          if (identifier.type == ImpTypes.Int && val.type == ImpTypes.Int)
-            val = new ImpObject(identifier.getInt() + val.getInt());
-        } else if (op.equals("-=")) {
-          ImpObject identifier = lastProp.props.Get(propName);
-
-          if (identifier.type == ImpTypes.Int && val.type == ImpTypes.Int)
-            val = new ImpObject(identifier.getInt() - val.getInt());
+          val = iOperation(identifier, val, op);
         }
 
         lastProp.props.Set(propName, val);
@@ -628,6 +654,8 @@ public class Interpreter {
         ImpObject oldProp = propPath.get(0);
 
         for (int j = 1; j < propPath.size(); j++) {
+          // Sets all properties from the prop list to make sure all references and copied versions of the objects have the same value.
+
           String name = propNames.get(j);
           oldProp = oldProp.props.Set(name, propPath.get(j));
         }
@@ -667,6 +695,7 @@ public class Interpreter {
     if (condition.getBoolean()) {
       returnValue = Evaluate(exp.then);
 
+      if (scope.returned && extend) scope.parent.returned = true;
       if (extend)
         scope = scope.parent;
       
@@ -676,6 +705,7 @@ public class Interpreter {
     if (!exp.els.isNull()) {
       returnValue = Evaluate(exp.els);
 
+      if (scope.returned && extend) scope.parent.returned = true;
       if (extend)
         scope = scope.parent;
       
@@ -687,38 +717,139 @@ public class Interpreter {
 
   ImpObject iOperation(ImpObject a, ImpObject b, String op) {
     if (op.equals("==")) {
+
       if (a.type == ImpTypes.Int && a.type == ImpTypes.Int) {
         return new ImpObject(a.getInt() == b.getInt());
       } else if (a.type == ImpTypes.String && b.type == ImpTypes.String) {
         return new ImpObject(a.getString().equals(b.getString()));
+      } else if (a.type == ImpTypes.Double && b.type == ImpTypes.Double) {
+        return new ImpObject(a.getDouble() + b.getDouble());
+      } else if (a.type == ImpTypes.Double && b.type == ImpTypes.Int) {
+        return new ImpObject(a.getDouble() + b.getDouble());
       }
+
+      return new ImpObject(false);
+
     } else if (op.equals("<")) {
+
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Int)
         return new ImpObject(a.getInt() < b.getInt());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Double)
+        return new ImpObject(a.getDouble() < b.getDouble());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Int)
+        return new ImpObject(a.getDouble() < b.getDouble());
+
+      return new ImpObject(false);
+      
     } else if (op.equals(">")) {
+
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Int)
         return new ImpObject(a.getInt() > b.getInt());
+
+      return new ImpObject(false);
+
     } else if (op.equals("<=")) {
-      if (a.type == ImpTypes.Int && b.type == ImpTypes.Int)
-        return new ImpObject(a.getInt() <= b.getInt());
+
+      return new ImpObject(iOperation(a, b, "<").getBoolean() || iOperation(a, b, "==").getBoolean());
+
     } else if (op.equals(">=")) {
-      if (a.type == ImpTypes.Int && b.type == ImpTypes.Int)
-        return new ImpObject(a.getInt() >= b.getInt());
+
+      return new ImpObject(iOperation(a, b, ">").getBoolean() || iOperation(a, b, "==").getBoolean());
+
     } else if (op.equals("+") || op.equals("+=")) {
+
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Int)
         return new ImpObject(a.getInt() + b.getInt());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Double)
+        return new ImpObject(a.getDouble() + b.getDouble());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Int)
+        return new ImpObject(a.getDouble() + b.getDouble());
+
+      if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
+        return new ImpObject(a.getInt() + b.getInt());
+
+      if (a.type == ImpTypes.ClassString && b.type == ImpTypes.ClassString) {
+        ImpClass cls = (ImpClass)scope.Get("String");
+
+        ArrayList<ImpObject> newStr = new ArrayList<ImpObject>();
+        newStr.add(a);
+
+        ImpObject newInstance = cls.NewInstance(new ArrayList<ImpObject>(), new ImpObject());
+        newInstance.type = ImpTypes.ClassString;
+        ImpFunction method = (ImpFunction)newInstance.props.Get("concat");
+        method.Call(newStr, newInstance);
+        newStr.set(0, b);
+        method.Call(newStr, newInstance);
+
+        return newInstance;
+      }
+
+      if (a.type == ImpTypes.ClassString && b.type == ImpTypes.Int)
+        return iOperation(a, ConstructString(b.getString()), "+");
+
+      if (a.type == ImpTypes.ClassString && b.type == ImpTypes.Double)
+        return iOperation(a, ConstructString(b.getString()), "+");
+
     } else if (op.equals("-") || op.equals("-=")) {
+
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Int)
         return new ImpObject(a.getInt() - b.getInt());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Double)
+        return new ImpObject(a.getDouble() - b.getDouble());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Int)
+        return new ImpObject(a.getDouble() - b.getDouble());
+
+      if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
+        return new ImpObject(a.getInt() - b.getInt());
+
     } else if (op.equals("/")) {
+
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Int)
         return new ImpObject(a.getInt() / b.getInt());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Double)
+        return new ImpObject(a.getDouble() / b.getDouble());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Int)
+        return new ImpObject(a.getDouble() / b.getDouble());
+
+      if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
+        return new ImpObject(a.getInt() / b.getInt());
+
     } else if (op.equals("*")) {
+
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Int)
         return new ImpObject(a.getInt() * b.getInt());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Double)
+        return new ImpObject(a.getDouble() * b.getDouble());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Int)
+        return new ImpObject(a.getDouble() * b.getDouble());
+
+      if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
+        return new ImpObject(a.getInt() * b.getInt());
+
     } else if (op.equals("%")) {
+
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Int)
         return new ImpObject(a.getInt() % b.getInt());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Double)
+        return new ImpObject(a.getDouble() % b.getDouble());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Int)
+        return new ImpObject(a.getDouble() % b.getDouble());
+
+      if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
+        return new ImpObject(a.getInt() % b.getInt());
+
     }
 
     throw new Error("Invalid operator " + op + ".");
@@ -786,13 +917,38 @@ public class Interpreter {
     return returnValue;
   }
 
+  ImpObject iArray(AST exp) {
+    ArrayList<AST> args = exp.args;
+
+    ImpClass arr = (ImpClass)scope.Get("Array");
+    ImpObject arrObject = arr.NewInstance(new ArrayList<ImpObject>(), new ImpObject());
+
+    for (int i = 0; i < args.size(); i++) {
+      arrObject.props.Set(Integer.toString(i), Evaluate(args.get(i)));
+    }
+
+    arrObject.props.Set("length", new ImpObject(args.size()));
+
+    return arrObject;
+  }
+
+  ImpObject iImport(AST exp) {
+    String importPath = exp.value.getString();
+
+    ImpObject exports = new Interpreter().Interpret(importPath);
+    return scope.Set(exp.assign.value.getString(), exports);
+  }
+
   ImpObject Evaluate(AST exp) {
     switch (exp.type) {
       case Scope: return iScope(exp);
 
       case String: return iString(exp);
       case Integer: return iInteger(exp);
+      case Double: return iDouble(exp);
       case Boolean: return iBoolean(exp);
+
+      case Array: return iArray(exp);
 
       case Binary: return iBinary(exp);
 
@@ -811,6 +967,8 @@ public class Interpreter {
       case If: return iIf(exp);
       case For: return iFor(exp);
 
+      case Import: return iImport(exp);
+
       default: {
         System.out.println(exp);
         throw new Error("Invalid item");
@@ -818,7 +976,7 @@ public class Interpreter {
     }
   }
 
-  public ImpObject InterpretFile(String file) {
+  public ImpScope InterpretFile(String file) {
     Lexer lexer = new Lexer(MFileReader.readFile(file));
     ArrayList<Token> tokens = lexer.tokenize();
 
@@ -828,28 +986,61 @@ public class Interpreter {
     Interpreter interp = new Interpreter();
 
     ast = mainAst;
-    return iScope(ast, false);
+    interp.iScope(ast);
+    return interp.scope;
   }
 
-  public ImpObject loadAsGlobal(String file) {
-    ImpObject exports = InterpretFile(file);
+  public void loadAsGlobal(String file) {
+    ImpScope globalScope = InterpretFile(file);
 
-    for (Entry<String, ImpObject> prop : exports.props.props.entrySet()) {
-      scope.Define(prop.getKey(), prop.getValue());
+    // if (exports.type == ImpTypes.Class)
+    //   scope.Set(((ImpClass)exports).className, exports);
+
+    for (Entry<String, ImpObject> entry : globalScope.props.props.entrySet()) {
+      scope.Set(entry.getKey(), entry.getValue());
     }
+  }
 
-    return exports;
+  public ImpObject Interpret(String filename) {
+    Lexer lexer = new Lexer(MFileReader.readFile(filename));
+    Parser parser = new Parser(lexer.tokenize());
+
+    AST mainAst = parser.parse();
+
+    scope.Define("print", new ImpFunction(this, (ArrayList<ImpObject> funcArgs, Interpreter i) -> {
+      for (ImpObject arg : funcArgs) {
+        System.out.print(arg.getString() + " ");
+      }
+
+      System.out.println();
+
+      return new ImpObject();
+    }, "print"));
+
+    scope.Define("input", new ImpFunction(this, (ArrayList<ImpObject> funcArgs, Interpreter i) -> {
+      boolean isFirst = true;
+      for (ImpObject arg : funcArgs) {
+        if (isFirst) isFirst = false;
+        else System.out.print(" ");
+
+        System.out.print(arg.getString());
+      }
+
+      ImpObject str = new ImpObject(new Scanner(System.in).nextLine());
+
+      return str;
+    }, "input"));
+
+    return Interpret(mainAst);
   }
 
   public ImpObject Interpret(AST mainAst) {
     ast = mainAst;
 
-    loadAsGlobal("./builtins/String.imp");
-    loadAsGlobal("./builtins/Array.imp");
+    // loadAsGlobal("./builtins/String.imp");
+    // loadAsGlobal("./builtins/Array.imp");
+    loadAsGlobal("./builtins/globals.imp");
 
     return iScope(mainAst, false);
   }
 }
-
-// This took me together almost 10 hours to code. Started the interpreter Saturday 5/22 at 4pm. Stopped at 3:20 am.
-// Obviously I didn't sit all day and code but most of it was.

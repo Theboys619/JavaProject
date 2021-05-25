@@ -29,6 +29,8 @@ class Lexer {
     put("else", "Keyword");
     put("true", "Keyword");
     put("false", "Keyword");
+    put("import", "Keyword");
+    put("as", "Keyword");
   }};
 
   public Lexer() {
@@ -186,6 +188,12 @@ class Lexer {
         line++;
 
         advance();
+      }
+
+      if (curChar == '#') { // Comment
+        while (curChar != '\n') {
+          advance();
+        }
       }
 
       if (isOperator(curChar) > 0) {

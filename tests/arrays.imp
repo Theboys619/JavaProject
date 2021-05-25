@@ -1,0 +1,14 @@
+set x = ["Hi", "There", "Man"];
+
+for (set i; i < x.length; i += 1) {
+  print(x[i]);
+}
+
+set y = x.pop();
+print("New Length:", x.length);
+
+print("Y:", y);
+
+for (set i; i < x.length; i += 1) {
+  print(x[i]);
+}
