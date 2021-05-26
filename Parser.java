@@ -155,6 +155,10 @@ class Parser {
     AST funcCall = new AST(ExprTypes.FunctionCall, varName);
     funcCall.args = pDelimiters("(", ")", ",");
 
+    pDotOp(funcCall);
+
+    funcCall.isCall = true;
+
     return funcCall;
   }
 
@@ -257,7 +261,8 @@ class Parser {
     return stmt;
   }
 
-  AST pFunction() {
+  AST pFunction() { return pFunction(false); }
+  AST pFunction(boolean isStatic) {
     advance(); // skip over func Keyword
 
     if (!isType("Identifier")) throw new Error("Invalid function name " + curTok.getString());
@@ -269,6 +274,7 @@ class Parser {
     func.scope = new AST(ExprTypes.Scope, curTok);
 
     func.scope.block = pDelimiters("{", "}", "");
+    func.isstatic = isStatic;
 
     return func;
   }
@@ -458,6 +464,14 @@ class Parser {
 
     if (isType("Keyword", "set")) {
       return pSet();
+    }
+
+    if (
+      isType("Keyword", "static") &&
+      isType("Keyword", "func", peek())
+    ) {
+      advance();
+      return pFunction(true);
     }
 
     if (isType("Keyword", "func")) {

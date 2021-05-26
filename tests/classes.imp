@@ -1,0 +1,13 @@
+class TestClass {
+  func TestClass(y) {
+    this.x = y;
+  }
+
+  static func print(z) {
+    print(z);
+  }
+}
+
+TestClass.print("Hello, World!");
+set a = TestClass("Hello, Me!");
+a.print(a.x);

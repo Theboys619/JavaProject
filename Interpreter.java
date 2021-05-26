@@ -439,11 +439,15 @@ public class Interpreter {
       scope = new ImpScope(this, scope);
 
     for (AST expr : exp.block) {
-      if (expr.type != ExprTypes.Function) continue;
+      if (
+        expr.type != ExprTypes.Function
+        && expr.type != ExprTypes.Class
+      ) continue;
       returnValue = Evaluate(expr);
     }
 
     for (AST expr : exp.block) {
+      if (expr.type == ExprTypes.Class) continue;
       if (expr.type == ExprTypes.Function) continue;
       returnValue = Evaluate(expr); // Evaluate each statement or expression
 
@@ -563,6 +567,16 @@ public class Interpreter {
     ImpObject cls = new ImpClass(this, exp);
     // Polymorphism actually hurts the brain it is proven.
 
+    for (AST expr : exp.scope.block) {
+      if (!expr.isstatic) continue;
+
+      scope = new ImpScope(this, scope);
+      ImpObject staticMem = Evaluate(expr);
+      scope = scope.parent;
+
+      cls.props.Define(expr.value.getString(), staticMem);
+    }
+
     scope.Define(exp.value.getString(), cls);
 
     return cls;
@@ -574,6 +588,11 @@ public class Interpreter {
   // tbh I don't even know what's going on here; I just wrote it.
   ImpObject iAccess(AST exp) {
     AST mainIdentifier = new AST(ExprTypes.Identifier, exp.value);
+    if (exp.isCall) {
+      mainIdentifier = new AST(ExprTypes.FunctionCall, exp.value);
+      mainIdentifier.args = exp.args;
+      mainIdentifier.scope = exp.scope;
+    }
 
     ArrayList<ImpObject> propPath = new ArrayList<ImpObject>();
     ArrayList<String> propNames = new ArrayList<String>();
@@ -678,7 +697,9 @@ public class Interpreter {
         lastEvaluated = prop;
       }
     }
-    scope.Set(exp.value.getString(), propPath.get(0));
+
+    if (!exp.isCall)
+      scope.Set(exp.value.getString(), propPath.get(0));
 
     return lastEvaluated;
   }

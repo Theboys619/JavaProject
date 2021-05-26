@@ -31,6 +31,7 @@ class Lexer {
     put("false", "Keyword");
     put("import", "Keyword");
     put("as", "Keyword");
+    put("static", "Keyword");
   }};
 
   public Lexer() {

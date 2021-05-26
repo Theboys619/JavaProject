@@ -47,7 +47,7 @@ print(z.length)
 print("Popped Value:", c);
 
 set inputVal = input("Enter Name: "); # Yo insane
-print("Hi", inputVal); # Prints each arg and a space between them
+print("Hi,", inputVal); # Prints each arg and a space between them
 print(5.5);
 
 set hq = 8 / 2 * (2 + 2); # should be 16

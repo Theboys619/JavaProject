@@ -40,12 +40,14 @@ public class AST {
 
   boolean returned = false;
   boolean isBracketOp = false;
+  boolean isCall = false;
 
   // Scopes and Functinos
 
   ArrayList<AST> block = new ArrayList<AST>();
   ArrayList<AST> args = new ArrayList<AST>();
   AST scope;
+  boolean isstatic = false;
 
   // If
   AST condition;
