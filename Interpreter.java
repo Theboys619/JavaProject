@@ -53,6 +53,14 @@ class PropMap {
 
     return props.put(name, val);
   }
+
+  public PropMap join(PropMap other) {
+    for (Entry<String, ImpObject> entry : other.props.entrySet()) {
+      props.putIfAbsent(entry.getKey(), entry.getValue());
+    }
+
+    return this;
+  }
 }
 
 enum ImpTypes {
@@ -292,6 +300,13 @@ class ImpClass extends ImpObject {
     className = exp.value.getString();
     objThis = new ImpObject();
   }
+  public ImpClass(Interpreter i, ArrayList<ImpObject> defs, String name) {
+    super(ImpTypes.Class);
+    interp = i;
+    classExp = new AST(ExprTypes.Identifier, new Token("Identifier", name));
+    className = name;
+    objThis = new ImpObject();
+  }
 
   public ImpObject NewInstance(ArrayList<ImpObject> args, ImpObject thisObj) {
     if (thisObj.isNull() && objThis.isNull())
@@ -424,11 +439,22 @@ public class Interpreter {
   ImpScope scope;
   AST ast;
 
+  Map<String, ImpObject> builtins = new HashMap<String, ImpObject>();
+  Map<String, String> modules = new HashMap<String, String>();
+
   public Interpreter() {
     scope = new ImpScope(this);
   }
   public Interpreter(ImpScope s) {
     scope = s;
+  }
+
+  public void addBuiltin(String moduleName, ImpObject o) {
+    builtins.put(moduleName, o);
+  }
+
+  public void addModule(String moduleName, String path) {
+    modules.put(moduleName, path);
   }
 
   ImpObject iScope(AST exp) { return iScope(exp, true); }
@@ -442,11 +468,13 @@ public class Interpreter {
       if (
         expr.type != ExprTypes.Function
         && expr.type != ExprTypes.Class
+        && expr.type != ExprTypes.Import
       ) continue;
       returnValue = Evaluate(expr);
     }
 
     for (AST expr : exp.block) {
+      if (expr.type == ExprTypes.Import) continue;
       if (expr.type == ExprTypes.Class) continue;
       if (expr.type == ExprTypes.Function) continue;
       returnValue = Evaluate(expr); // Evaluate each statement or expression
@@ -637,7 +665,7 @@ public class Interpreter {
         if (lastEvaluated.isNull()) throw new Error("Cannot call a undefined function / property");
 
         ImpFunction func = (ImpFunction)lastEvaluated;
-        func.interp = this;
+        func.interp.scope.props.join(scope.props);
         lastEvaluated = func.ExpCall(propExp.args, propPath.get(i));
 
         propPath.set(i + 1, lastEvaluated);
@@ -762,12 +790,24 @@ public class Interpreter {
       if (a.type == ImpTypes.Double && b.type == ImpTypes.Int)
         return new ImpObject(a.getDouble() < b.getDouble());
 
+      if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
+        return new ImpObject(a.getDouble() < b.getDouble());
+
       return new ImpObject(false);
       
     } else if (op.equals(">")) {
 
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Int)
         return new ImpObject(a.getInt() > b.getInt());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Double)
+        return new ImpObject(a.getDouble() > b.getDouble());
+
+      if (a.type == ImpTypes.Double && b.type == ImpTypes.Int)
+        return new ImpObject(a.getDouble() > b.getDouble());
+
+      if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
+        return new ImpObject(a.getDouble() > b.getDouble());
 
       return new ImpObject(false);
 
@@ -791,7 +831,7 @@ public class Interpreter {
         return new ImpObject(a.getDouble() + b.getDouble());
 
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
-        return new ImpObject(a.getInt() + b.getInt());
+        return new ImpObject(a.getDouble() + b.getDouble());
 
       if (a.type == ImpTypes.ClassString && b.type == ImpTypes.ClassString) {
         ImpClass cls = (ImpClass)scope.Get("String");
@@ -827,7 +867,7 @@ public class Interpreter {
         return new ImpObject(a.getDouble() - b.getDouble());
 
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
-        return new ImpObject(a.getInt() - b.getInt());
+        return new ImpObject(a.getDouble() - b.getDouble());
 
     } else if (op.equals("/")) {
 
@@ -841,7 +881,7 @@ public class Interpreter {
         return new ImpObject(a.getDouble() / b.getDouble());
 
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
-        return new ImpObject(a.getInt() / b.getInt());
+        return new ImpObject(a.getDouble() / b.getDouble());
 
     } else if (op.equals("*")) {
 
@@ -855,7 +895,7 @@ public class Interpreter {
         return new ImpObject(a.getDouble() * b.getDouble());
 
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
-        return new ImpObject(a.getInt() * b.getInt());
+        return new ImpObject(a.getDouble() * b.getDouble());
 
     } else if (op.equals("%")) {
 
@@ -869,7 +909,7 @@ public class Interpreter {
         return new ImpObject(a.getDouble() % b.getDouble());
 
       if (a.type == ImpTypes.Int && b.type == ImpTypes.Double)
-        return new ImpObject(a.getInt() % b.getInt());
+        return new ImpObject(a.getDouble() % b.getDouble());
 
     }
 
@@ -956,7 +996,19 @@ public class Interpreter {
   ImpObject iImport(AST exp) {
     String importPath = exp.value.getString();
 
-    ImpObject exports = new Interpreter().Interpret(importPath);
+    if (builtins.containsKey(importPath)) {
+      return scope.Set(exp.assign.value.getString(), builtins.get(importPath));
+    }
+
+    if (modules.containsKey(importPath)) {
+      importPath = modules.get(importPath);
+    }
+
+    Interpreter interp = new Interpreter();
+    interp.modules = modules;
+    interp.builtins = builtins;
+
+    ImpObject exports = interp.Interpret(importPath, true);
     return scope.Set(exp.assign.value.getString(), exports);
   }
 
@@ -1005,6 +1057,8 @@ public class Interpreter {
 
     AST mainAst = parser.parse();
     Interpreter interp = new Interpreter();
+    interp.builtins = builtins;
+    interp.modules = modules;
 
     ast = mainAst;
     interp.iScope(ast);
@@ -1022,45 +1076,50 @@ public class Interpreter {
     }
   }
 
-  public ImpObject Interpret(String filename) {
+  public ImpObject Interpret(String filename) { return Interpret(filename, true); }
+  public ImpObject Interpret(String filename, boolean loadGlobals) {
     Lexer lexer = new Lexer(MFileReader.readFile(filename));
     Parser parser = new Parser(lexer.tokenize());
 
     AST mainAst = parser.parse();
 
-    scope.Define("print", new ImpFunction(this, (ArrayList<ImpObject> funcArgs, Interpreter i) -> {
-      for (ImpObject arg : funcArgs) {
-        System.out.print(arg.getString() + " ");
-      }
+    if (loadGlobals) {
+      scope.Define("print", new ImpFunction(this, (ArrayList<ImpObject> funcArgs, Interpreter i) -> {
+        for (ImpObject arg : funcArgs) {
+          System.out.print(arg.getString() + " ");
+        }
 
-      System.out.println();
+        System.out.println();
 
-      return new ImpObject();
-    }, "print"));
+        return new ImpObject();
+      }, "print"));
 
-    scope.Define("input", new ImpFunction(this, (ArrayList<ImpObject> funcArgs, Interpreter i) -> {
-      boolean isFirst = true;
-      for (ImpObject arg : funcArgs) {
-        if (isFirst) isFirst = false;
-        else System.out.print(" ");
+      scope.Define("input", new ImpFunction(this, (ArrayList<ImpObject> funcArgs, Interpreter i) -> {
+        boolean isFirst = true;
+        for (ImpObject arg : funcArgs) {
+          if (isFirst) isFirst = false;
+          else System.out.print(" ");
 
-        System.out.print(arg.getString());
-      }
+          System.out.print(arg.getString());
+        }
 
-      ImpObject str = new ImpObject(new Scanner(System.in).nextLine());
+        ImpObject str = new ImpObject(new Scanner(System.in).nextLine());
 
-      return str;
-    }, "input"));
+        return str;
+      }, "input"));
+    }
 
-    return Interpret(mainAst);
+    return Interpret(mainAst, loadGlobals);
   }
 
-  public ImpObject Interpret(AST mainAst) {
+  public ImpObject Interpret(AST mainAst) { return Interpret(mainAst, true); }
+  public ImpObject Interpret(AST mainAst, boolean loadGlobals) {
     ast = mainAst;
 
     // loadAsGlobal("./builtins/String.imp");
     // loadAsGlobal("./builtins/Array.imp");
-    loadAsGlobal("./builtins/globals.imp");
+    if (loadGlobals)
+      loadAsGlobal("./builtins/globals.imp");
 
     return iScope(mainAst, false);
   }

@@ -1,0 +1,11 @@
+import "os" as os;
+
+class Filesystem {
+  func FileSystem() {}
+
+  static func readFile(filename) {
+    return os.readFile(filename);
+  }
+}
+
+return Filesystem;

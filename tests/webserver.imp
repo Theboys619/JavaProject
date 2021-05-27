@@ -1,0 +1,19 @@
+import "LandingGear" as LandingGear;
+
+set app = LandingGear().getApp();
+
+func index(req, res) {
+  res.sendFile("web/index.html");
+}
+
+app.get("/", index);
+app.get("/favicon.ico", func favicon(req, res) {
+  res.sendFile("web/favicon.ico");
+});
+app.get("/script.js", func script(req, res) { # You can also pass in functions directly
+  res.sendFile("web/script.js");
+})
+
+app.listen(8080, func cb() {
+  print("Listening on port", 8080);
+});

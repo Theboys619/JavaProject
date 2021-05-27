@@ -1,0 +1,3 @@
+import "Filesystem" as fs;
+
+print(fs.readFile("./tests/strings.imp"));

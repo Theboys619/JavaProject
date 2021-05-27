@@ -1,0 +1,11 @@
+import "os" as os;
+
+class LandingGear {
+  func LandingGear() {};
+
+  func getApp() {
+    return os.LandingGear();
+  }
+}
+
+return LandingGear;
